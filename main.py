@@ -3076,7 +3076,7 @@ def _parse_damage_text(raw):
     # ※上記以外の損傷 → 各行を「要素番号＋損傷の種類」で個別エントリとして解析
     if first.startswith('※'):
         member_dmg_pat = re.compile(
-            r'^(.+?)\s+([A-Za-z]{2,4})([\d,→]+)\s*[:：]\s*(.+)$'
+            r'^(.+?)\s*([A-Za-z]{2,4})([\d,→]+)\s*[:：]\s*(.+)$'
         )
         dmg_pat2 = re.compile(
             r'^([' + CIRCLE_NUMS + r'])(.+?)-([a-e])(?:→([a-e]))?(.*)' 
@@ -3118,7 +3118,7 @@ def _parse_damage_text(raw):
         return results if results else None
 
     # パターン1: 部材名変更あり「旧名 旧記号旧番→新名 新記号新番」
-    m = re.match(r'^(.+?)\s+([A-Za-z]{2,4})(\d{4})→(.+?)\s+([A-Za-z]{2,4})(\d{4})\s*$', first)
+    m = re.match(r'^(.+?)\s*([A-Za-z]{2,4})(\d{4})→(.+?)\s*([A-Za-z]{2,4})(\d{4})\s*$', first)
     if m:
         result['member_name']        = m.group(4).strip()
         result['symbol']             = m.group(5)
@@ -3127,7 +3127,7 @@ def _parse_damage_text(raw):
         result['is_arrow_current']   = True
     else:
         # パターン2: 要素番号変更あり「部材名 記号0101→0102,0103」
-        m = re.match(r'^(.+?)\s+([A-Za-z]{2,4})(\d{4})→([\d,]+)', first)
+        m = re.match(r'^(.+?)\s*([A-Za-z]{2,4})(\d{4})→([\d,]+)', first)
         if m:
             result['member_name']        = m.group(1).strip()
             result['symbol']             = m.group(2)
@@ -3136,7 +3136,7 @@ def _parse_damage_text(raw):
             result['is_arrow_current']   = True
         else:
             # パターン3: 要素番号のみ（単数・複数）
-            m = re.match(r'^(.+?)\s+([A-Za-z]{2,4})([\d,]+)', first)
+            m = re.match(r'^(.+?)\s*([A-Za-z]{2,4})([\d,]+)', first)
             if m:
                 result['member_name']        = m.group(1).strip()
                 result['symbol']             = m.group(2)
