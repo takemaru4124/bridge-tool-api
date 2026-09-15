@@ -209,7 +209,7 @@ def expand_members(members: list) -> list:
     return rows
 
 
-def write_members(ws, members: list, damages: list, span_no: int, start_row: int = 12):
+def write_members(ws, members: list, damages: list, span_no: int, start_row: int = 12, buzai_mode: bool = False):
     """
     部材リストと損傷データをシートに書き込む。
     damages: DamageListのdamagesData（span_noでフィルタ済み想定）
@@ -330,7 +330,8 @@ def write_members(ws, members: list, damages: list, span_no: int, start_row: int
         safe_write(ws, r, 5,  m.get("zairyo", ""))
         safe_write(ws, r, 8,  m.get("name", ""))
         safe_write(ws, r, 18, m.get("symbol", ""))
-        safe_write(ws, r, 22, m.get("element_no", ""))
+        _en3 = m.get("element_no", "")
+        safe_write(ws, r, 22, buzai_no_toggle(m.get("symbol", ""), _en3) if buzai_mode else _en3)
         if dmg:
             from openpyxl.styles import Alignment
             safe_write(ws, r, 27, dmg.get("currDeg", ""))
@@ -594,6 +595,34 @@ def buzai_no_34(symbol: str, element_no: str) -> str:
     return '00'
 
 
+# -------------------------------------------------------
+# 要素番号→部材番号 変換（出力トグルON時のみ使用）
+# 主要部材のみ2桁を取得（上部工=前2桁 / 下部工=後2桁）、主要部材以外は'00'。
+# ※既存 buzai_no_34（その３-４用）とは独立。その３-４の仕様には影響しない。
+# -------------------------------------------------------
+TOGGLE_UPPER_SYMBOLS = {'Mg', 'Gb', 'Cr', 'St', 'Bt', 'Pp', 'Em',
+                        'Ar', 'Sa', 'Rg', 'Rp', 'Ts', 'Cn'}      # 前2桁
+TOGGLE_LOWER_SYMBOLS = {'Pw', 'Pb', 'Pc', 'Ap', 'Ac', 'Aw', 'Ff'}  # 後2桁
+
+
+def buzai_no_toggle(symbol: str, element_no: str) -> str:
+    """要素番号→部材番号変換（チェックボックスON時）。
+    主要部材のみ2桁（上部=前2桁 / 下部=後2桁）、それ以外は'00'。"""
+    sym = (symbol or '').strip()
+    en = (element_no or '').strip()
+    if sym in TOGGLE_UPPER_SYMBOLS:
+        head = True
+    elif sym in TOGGLE_LOWER_SYMBOLS:
+        head = False
+    else:
+        return '00'
+    if len(en) == 4 and en.isdigit():
+        return en[:2] if head else en[2:]
+    if len(en) == 2 and en.isdigit():
+        return en
+    return '00'
+
+
 def build_summary_rows_34(members: list, damages: list, prev_items: list = None) -> list:
     """部材番号単位で損傷を集約し、書き込み行リストを返す。
     返り値: [(member_or_None, 部材番号, 今回[(名,程度)...], 前回[(名,程度)...], NGフラグ), ...]
@@ -786,7 +815,7 @@ def write_summary_34(ws, rows: list, start_row: int = 12):
             safe_write(ws, r, NG_COL, ng)
 
 
-def write_template(data: dict, output_path: str):
+def write_template(data: dict, output_path: str, buzai_mode: bool = False):
     shutil.copy(TEMPLATE_PATH, output_path)
     wb = openpyxl.load_workbook(output_path, keep_vba=False)
 
@@ -840,7 +869,7 @@ def write_template(data: dict, output_path: str):
 
         # 必要な情報を書き込む
         write_sheet_header(ws, data, span_no)
-        actual_rows = write_members(ws, members, span_damages, span_no)
+        actual_rows = write_members(ws, members, span_damages, span_no, buzai_mode=buzai_mode)
         set_print_layout(ws, actual_rows)
 
     if "__clean_33__" in wb.sheetnames:
@@ -1079,7 +1108,8 @@ def write_template(data: dict, output_path: str):
         photo_num = _re.sub(r'^[^0-9]*', '', str(raw_label))
         ws32[f"{col['写真番号']}{base}"] = int(photo_num) if photo_num.isdigit() else raw_label
         ws32[f"{col['部材名']}{base + 1}"] = dmg.get("memberName", "")
-        ws32[f"{col['要素番号']}{base + 1}"] = dmg.get("elementNoCurrent", "")
+        _en32 = dmg.get("elementNoCurrent", "")
+        ws32[f"{col['要素番号']}{base + 1}"] = buzai_no_toggle(dmg.get("symbol", ""), _en32) if buzai_mode else _en32
         ws32[f"{col['損傷の種類']}{base + 2}"] = dmg.get("dmgType", "")
         ws32[f"{col['損傷程度']}{base + 2}"] = dmg.get("currDeg", "")
         prev_no = dmg.get("damageNoPrev", "") or dmg.get("damage_no_prev", "")
@@ -1315,7 +1345,8 @@ def write_template(data: dict, output_path: str):
                     m = _re2.match(r'^([A-Za-z]{2,4})(\d{4})$', first)
                     if m:
                         ws32[f"{col['部材名']}{base_row + 1}"] = sym_name.get(m.group(1), "")
-                        ws32[f"{col['要素番号']}{base_row + 1}"] = m.group(2)
+                        _en32b = m.group(2)
+                        ws32[f"{col['要素番号']}{base_row + 1}"] = buzai_no_toggle(m.group(1), _en32b) if buzai_mode else _en32b
 
                 # 損傷の種類=NON / 損傷程度=a / 前回判定=a
                 ws32[f"{col['損傷の種類']}{base_row + 2}"] = "NON"
@@ -1355,7 +1386,7 @@ def write_template(data: dict, output_path: str):
     wb.save(output_path)
 
 
-def write_inspection_template(data: dict, output_path: str):
+def write_inspection_template(data: dict, output_path: str, buzai_mode: bool = False):
     """点検記録様式(R6)その1（1/2・2/2ヘッダー）に橋梁諸元を書き込む"""
     shutil.copy(INSPECTION_TEMPLATE_PATH, output_path)
     wb = openpyxl.load_workbook(output_path)
@@ -1465,12 +1496,12 @@ def write_inspection_template(data: dict, output_path: str):
     write_inspection_situation_photos(wb, data)
 
     # --- その8〜その10：STEP7データ書き込み ---
-    write_inspection_step7_sheets(wb, data)
+    write_inspection_step7_sheets(wb, data, buzai_mode=buzai_mode)
 
     wb.save(output_path)
 
 
-def write_inspection_step7_sheets(wb, data: dict):
+def write_inspection_step7_sheets(wb, data: dict, buzai_mode: bool = False):
     """
     点検記録様式 その8〜その10 に STEP7データを書き込む。
     その8  : システム × 径間ごとにシートをコピー
@@ -1655,7 +1686,7 @@ def write_inspection_step7_sheets(wb, data: dict):
             for addr, val in [
                 (f"{c_photo}{lr}", str(seq_map.get(it["id"], ""))),
                 (f"{c_member}{lr}", it.get("memberName", "")),
-                (f"{c_elem}{lr}", it.get("elementNoCurrent", "")),
+                (f"{c_elem}{lr}", (buzai_no_toggle(it.get("symbol", ""), it.get("elementNoCurrent", "")) if (buzai_mode and it.get("symbol")) else it.get("elementNoCurrent", ""))),
                 (f"{c_dmg}{vr}", it.get("dmgType", "")),
             ]:
                 c = ws[addr]
@@ -2330,7 +2361,7 @@ async def export_from_data(request: Request):
         out_path = tmp.name
 
     try:
-        write_template(data, out_path)
+        write_template(data, out_path, buzai_mode=bool(bd.get("buzai_mode", False)))
         bridge_name = data["橋梁名"] or "調書"
         return FileResponse(
             out_path,
@@ -2359,7 +2390,7 @@ async def export_inspection_format(request: Request):
         out_path = tmp.name
 
     try:
-        write_inspection_template(bd, out_path)
+        write_inspection_template(bd, out_path, buzai_mode=bool(bd.get("buzai_mode", False)))
         return FileResponse(
             out_path,
             filename=f"{bridge_name}_点検記録様式.xlsx",
